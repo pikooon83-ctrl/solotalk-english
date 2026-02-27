@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SoloTalk English</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif;
+      background: #f7f7fb;
+      color: #222;
+      padding: 16px;
+    }
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+    }
+    h1 {
+      margin: 8px 0 6px;
+      font-size: 28px;
+    }
+    .subtitle {
+      margin: 0 0 16px;
+      color: #555;
+      line-height: 1.5;
+    }
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+      display: grid;
+      gap: 14px;
+    }
+    .image-wrap {
+      width: 100%;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #e5e7eb;
+      background: #eef1f4;
+      aspect-ratio: 16 / 9;
+      position: relative;
+    }
+    .image-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .image-fallback {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 6px;
+      color: #666;
+      text-align: center;
+      padding: 12px;
+    }
+    .image-fallback .main {
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .image-fallback .sub {
+      font-size: 13px;
+    }
+    .box {
+      border-radius: 12px;
+      padding: 12px;
+      border: 1px solid #ececec;
+      background: #fafafa;
+    }
+    .answer-box {
+      border-color: #dbeafe;
+      background: #f8fbff;
+    }
+    .label {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 6px;
+    }
+    .jp-text {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1.4;
+    }
+    .en-text {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+    button {
+      border: none;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .primary-btn {
+      background: #111827;
+      color: #fff;
+    }
+    .secondary-btn {
+      background: #fff;
+      color: #111827;
+      border: 1px solid #d1d5db;
+      font-weight: 600;
+    }
+    .button-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .tiny {
+      color: #666;
+      font-size: 12px;
+    }
+    @media (max-width: 480px) {
+      .jp-text { font-size: 20px; }
+      .en-text { font-size: 18px; }
+      h1 { font-size: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>SoloTalk English</h1>
+    <p class="subtitle">状況を見て、まず自分で英語で独り言を言ってみよう</p>
+
+    <div class="card">
+      <div class="image-wrap">
+        <img id="sceneImage" src="" alt="scene image" />
+        <div id="imageFallback" class="image-fallback">
+          <div class="main">画像（準備中）</div>
+          <div class="sub" id="fallbackCategory">category: -</div>
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="label">日本語</div>
+        <p id="jpText" class="jp-text"></p>
+      </div>
+
+      <div id="answerArea">
+        <button id="showAnswerBtn" class="primary-btn">答えを見る</button>
+      </div>
+
+      <div class="button-row">
+        <button id="nextBtn" class="secondary-btn">🎲 次へ（ランダム）</button>
+      </div>
+
+      <div class="tiny">※ 読み上げはブラウザの音声機能を使います（環境によって声が違います）</div>
+    </div>
+  </div>
+
+  <script>
+    const cards = [
+      {
+        id: 1,
+        category: "daily",
+        image: "images/daily_01.png",
+        jp: "もうこんな時間！",
+        model_en: "It's already this late!"
+      },
+      {
+        id: 2,
+        category: "lunch",
+        image: "images/lunch_01.png",
+        jp: "えーどれにしようかな。(ランチメニュー)",
+        model_en: "Hmm, which one should I get?"
+      },
+      {
+        id: 3,
+        category: "body",
+        image: "images/body_01.png",
+        jp: "肩こりがやばい。",
+        model_en: "My shoulders are so stiff."
+      },
+      {
+        id: 4,
+        category: "tired",
+        image: "images/tired_01.png",
+        jp: "眠すぎてヤバい。",
+        model_en: "I'm so sleepy right now."
+      },
+      {
+        id: 5,
+        category: "train",
+        image: "images/train_01.png",
+        jp: "マジで座りたい。(電車で)",
+        model_en: "I really want to sit down."
+      }
+    ];
+
+    let currentCard = null;
+    let showAnswer = false;
+
+    const sceneImage = document.getElementById("sceneImage");
+    const imageFallback = document.getElementById("imageFallback");
+    const fallbackCategory = document.getElementById("fallbackCategory");
+    const jpText = document.getElementById("jpText");
+    const answerArea = document.getElementById("answerArea");
+    const showAnswerBtn = document.getElementById("showAnswerBtn");
+    const nextBtn = document.getElementById("nextBtn");
+
+    function getRandomCard(excludeId) {
+      if (cards.length === 1) return cards[0];
+
+      let next = cards[Math.floor(Math.random() * cards.length)];
+      while (excludeId !== undefined && next.id === excludeId) {
+        next = cards[Math.floor(Math.random() * cards.length)];
+      }
+      return next;
+    }
+
+    function speakText(text) {
+      if (!("speechSynthesis" in window)) {
+        alert("このブラウザは読み上げに対応していません。");
+        return;
+      }
+
+      window.speechSynthesis.cancel();
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "en-US";
+      utterance.rate = 0.95;
+      utterance.pitch = 1.0;
+
+      const voices = window.speechSynthesis.getVoices();
+      const englishVoice =
+        voices.find(v => v.lang && v.lang.toLowerCase().startsWith("en-us")) ||
+        voices.find(v => v.lang && v.lang.toLowerCase().startsWith("en"));
+
+      if (englishVoice) utterance.voice = englishVoice;
+
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function renderAnswerArea() {
+      if (!showAnswer) {
+        answerArea.innerHTML = '<button id="showAnswerBtn" class="primary-btn">答えを見る</button>';
+        document.getElementById("showAnswerBtn").addEventListener("click", () => {
+          showAnswer = true;
+          renderAnswerArea();
+        });
+        return;
+      }
+
+      answerArea.innerHTML = `
+        <div class="box answer-box">
+          <div class="label">お手本の英文</div>
+          <p class="en-text">${currentCard.model_en}</p>
+          <div class="button-row" style="margin-top:10px;">
+            <button id="speakBtn" class="secondary-btn">🔊 読み上げ</button>
+            <button id="hideAnswerBtn" class="secondary-btn">隠す</button>
+          </div>
+        </div>
+      `;
+
+      document.getElementById("speakBtn").addEventListener("click", () => {
+        speakText(currentCard.model_en);
+      });
+
+      document.getElementById("hideAnswerBtn").addEventListener("click", () => {
+        showAnswer = false;
+        renderAnswerArea();
+      });
+    }
+
+    function renderCard() {
+      jpText.textContent = currentCard.jp;
+
+      // 画像表示（ない場合はフォールバック）
+      fallbackCategory.textContent = "category: " + currentCard.category;
+      imageFallback.style.display = "none";
+      sceneImage.style.display = "block";
+      sceneImage.src = currentCard.image;
+      sceneImage.alt = currentCard.jp;
+
+      sceneImage.onerror = () => {
+        sceneImage.style.display = "none";
+        imageFallback.style.display = "flex";
+      };
+
+      sceneImage.onload = () => {
+        sceneImage.style.display = "block";
+        imageFallback.style.display = "none";
+      };
+
+      renderAnswerArea();
+    }
+
+    function nextRandomCard() {
+      window.speechSynthesis && window.speechSynthesis.cancel();
+      currentCard = getRandomCard(currentCard ? currentCard.id : undefined);
+      showAnswer = false;
+      renderCard();
+    }
+
+    // iPhone系で音声リスト読み込みが遅いことがあるので先に一回取得
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+      };
+    }
+
+    nextBtn.addEventListener("click", nextRandomCard);
+
+    // 初回表示
+    nextRandomCard();
+  </script>
+</body>
+</html>
