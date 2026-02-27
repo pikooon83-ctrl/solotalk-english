@@ -78,6 +78,10 @@
       border-color: #dbeafe;
       background: #f8fbff;
     }
+    .record-box {
+      border-color: #fde68a;
+      background: #fffbeb;
+    }
     .label {
       font-size: 12px;
       color: #666;
@@ -113,6 +117,14 @@
       border: 1px solid #d1d5db;
       font-weight: 600;
     }
+    .danger-btn {
+      background: #dc2626;
+      color: #fff;
+    }
+    .success-btn {
+      background: #059669;
+      color: #fff;
+    }
     .button-row {
       display: flex;
       gap: 10px;
@@ -121,6 +133,16 @@
     .tiny {
       color: #666;
       font-size: 12px;
+    }
+    .status {
+      font-size: 14px;
+      font-weight: 600;
+      color: #92400e;
+      margin-top: 2px;
+    }
+    audio {
+      width: 100%;
+      margin-top: 8px;
     }
     @media (max-width: 480px) {
       .jp-text { font-size: 20px; }
@@ -148,6 +170,18 @@
         <p id="jpText" class="jp-text"></p>
       </div>
 
+      <!-- 録音エリア -->
+      <div class="box record-box">
+        <div class="label">録音（あなたの独り言）</div>
+        <div class="button-row">
+          <button id="recordBtn" class="success-btn">🎙️ 話す（録音開始）</button>
+          <button id="stopBtn" class="danger-btn" disabled>■ 停止</button>
+          <button id="playBtn" class="secondary-btn" disabled>▶ 再生</button>
+        </div>
+        <div id="recordStatus" class="status">録音前</div>
+        <audio id="audioPlayer" controls style="display:none;"></audio>
+      </div>
+
       <div id="answerArea">
         <button id="showAnswerBtn" class="primary-btn">答えを見る</button>
       </div>
@@ -157,6 +191,7 @@
       </div>
 
       <div class="tiny">※ 読み上げはブラウザの音声機能を使います（環境によって声が違います）</div>
+      <div class="tiny">※ 録音はブラウザ/端末によって挙動が少し異なります</div>
     </div>
   </div>
 
@@ -202,17 +237,27 @@
     let currentCard = null;
     let showAnswer = false;
 
+    // 録音関連
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let recordedAudioURL = null;
+    let currentStream = null;
+
     const sceneImage = document.getElementById("sceneImage");
     const imageFallback = document.getElementById("imageFallback");
     const fallbackCategory = document.getElementById("fallbackCategory");
     const jpText = document.getElementById("jpText");
     const answerArea = document.getElementById("answerArea");
-    const showAnswerBtn = document.getElementById("showAnswerBtn");
     const nextBtn = document.getElementById("nextBtn");
+
+    const recordBtn = document.getElementById("recordBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const playBtn = document.getElementById("playBtn");
+    const recordStatus = document.getElementById("recordStatus");
+    const audioPlayer = document.getElementById("audioPlayer");
 
     function getRandomCard(excludeId) {
       if (cards.length === 1) return cards[0];
-
       let next = cards[Math.floor(Math.random() * cards.length)];
       while (excludeId !== undefined && next.id === excludeId) {
         next = cards[Math.floor(Math.random() * cards.length)];
@@ -239,7 +284,6 @@
         voices.find(v => v.lang && v.lang.toLowerCase().startsWith("en"));
 
       if (englishVoice) utterance.voice = englishVoice;
-
       window.speechSynthesis.speak(utterance);
     }
 
@@ -277,7 +321,6 @@
     function renderCard() {
       jpText.textContent = currentCard.jp;
 
-      // 画像表示（ない場合はフォールバック）
       fallbackCategory.textContent = "category: " + currentCard.category;
       imageFallback.style.display = "none";
       sceneImage.style.display = "block";
@@ -297,14 +340,127 @@
       renderAnswerArea();
     }
 
+    function resetRecordingUI() {
+      if (recordedAudioURL) {
+        URL.revokeObjectURL(recordedAudioURL);
+        recordedAudioURL = null;
+      }
+      audioPlayer.pause();
+      audioPlayer.removeAttribute("src");
+      audioPlayer.style.display = "none";
+      playBtn.disabled = true;
+      recordStatus.textContent = "録音前";
+    }
+
+    function stopStreamTracks() {
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+        currentStream = null;
+      }
+    }
+
+    async function startRecording() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert("このブラウザでは録音機能が使えません。");
+        return;
+      }
+
+      try {
+        // 前の録音があればリセット
+        resetRecordingUI();
+        recordedChunks = [];
+
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        currentStream = stream;
+
+        let mimeType = "";
+        if (window.MediaRecorder && MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+          mimeType = "audio/webm;codecs=opus";
+        } else if (window.MediaRecorder && MediaRecorder.isTypeSupported("audio/webm")) {
+          mimeType = "audio/webm";
+        }
+
+        mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            recordedChunks.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = () => {
+          try {
+            const blobType = recordedChunks[0]?.type || "audio/webm";
+            const audioBlob = new Blob(recordedChunks, { type: blobType });
+            recordedAudioURL = URL.createObjectURL(audioBlob);
+
+            audioPlayer.src = recordedAudioURL;
+            audioPlayer.style.display = "block";
+            playBtn.disabled = false;
+            recordStatus.textContent = "録音完了 ✅（再生できます）";
+          } catch (e) {
+            console.error(e);
+            recordStatus.textContent = "録音データの作成に失敗しました";
+          } finally {
+            stopStreamTracks();
+          }
+        };
+
+        mediaRecorder.onerror = (e) => {
+          console.error(e);
+          recordStatus.textContent = "録音エラーが発生しました";
+          stopStreamTracks();
+        };
+
+        mediaRecorder.start();
+        recordStatus.textContent = "録音中… 英語で独り言を話してみよう";
+        recordBtn.disabled = true;
+        stopBtn.disabled = false;
+        playBtn.disabled = true;
+      } catch (error) {
+        console.error(error);
+        if (error.name === "NotAllowedError") {
+          alert("マイクの許可が必要です。ブラウザでマイクを許可してください。");
+        } else {
+          alert("録音を開始できませんでした。HTTPS環境（GitHub Pages）だと動きやすいです。");
+        }
+        recordStatus.textContent = "録音開始に失敗";
+      }
+    }
+
+    function stopRecording() {
+      if (!mediaRecorder) return;
+
+      if (mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+      }
+
+      recordBtn.disabled = false;
+      stopBtn.disabled = true;
+      recordStatus.textContent = "録音停止。データを作成中…";
+    }
+
+    function playRecording() {
+      if (!audioPlayer.src) return;
+      audioPlayer.play();
+    }
+
     function nextRandomCard() {
-      window.speechSynthesis && window.speechSynthesis.cancel();
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+
+      // 録音中なら停止
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+      }
+      stopStreamTracks();
+
       currentCard = getRandomCard(currentCard ? currentCard.id : undefined);
       showAnswer = false;
+      resetRecordingUI();
       renderCard();
     }
 
-    // iPhone系で音声リスト読み込みが遅いことがあるので先に一回取得
+    // iPhone系で音声リスト読み込みが遅いことがある
     if ("speechSynthesis" in window) {
       window.speechSynthesis.getVoices();
       window.speechSynthesis.onvoiceschanged = () => {
@@ -312,6 +468,9 @@
       };
     }
 
+    recordBtn.addEventListener("click", startRecording);
+    stopBtn.addEventListener("click", stopRecording);
+    playBtn.addEventListener("click", playRecording);
     nextBtn.addEventListener("click", nextRandomCard);
 
     // 初回表示
